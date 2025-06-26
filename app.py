@@ -65,13 +65,13 @@ async def handle_viebit_url(page):
         Path("debug_viebit.html").write_text(html)
         raise RuntimeError(f"Viebit interaction failed: {e}")
 
-async def process_url(url: str, browser_channel="chrome"):
+async def process_url(url: str):
     transcript = None
     filename = None
     print(f"\n▶️ Processing: {url}")
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True, channel=browser_channel)
+        browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
         vtt_future = asyncio.Future()
 
