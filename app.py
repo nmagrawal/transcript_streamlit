@@ -25,32 +25,59 @@ def sanitize_filename(name: str) -> str:
     return (sanitized[:150] + '...') if len(sanitized) > 150 else sanitized
 
 async def handle_granicus_url(page):
-    await page.locator(".flowplayer").click(timeout=10000)
-    await page.wait_for_timeout(500)
-    await page.locator(".flowplayer").click(timeout=10000)
-    await page.wait_for_timeout(500)
-    await page.locator(".flowplayer").hover(timeout=5000)
-    await page.locator(".fp-cc").first.click(timeout=10000)
-    await page.wait_for_timeout(500)
-    await page.locator(".fp-menu").get_by_text("On", exact=True).click(timeout=10000)
+    print("  - Handling Granicus player UI...")
+    try:
+        player = page.locator(".flowplayer")
+        await player.scroll_into_view_if_needed()
+        await player.click(timeout=10000, force=True)
+        await page.wait_for_timeout(500)
+        await player.click(timeout=10000, force=True)
+        await page.wait_for_timeout(500)
+        await player.hover(timeout=5000)
+
+        cc_button = page.locator(".fp-cc").first
+        await cc_button.scroll_into_view_if_needed()
+        await cc_button.click(timeout=10000, force=True)
+
+        await page.wait_for_timeout(500)
+        await page.locator(".fp-menu").get_by_text("On", exact=True).click(timeout=10000, force=True)
+    except Exception as e:
+        html = await page.content()
+        Path("debug_granicus.html").write_text(html)
+        raise RuntimeError(f"Granicus interaction failed: {e}")
 
 async def handle_viebit_url(page):
-    await page.locator(".vjs-big-play-button").click(timeout=20000)
-    await page.locator(".vjs-play-control").click(timeout=10000)
-    await page.wait_for_timeout(500)
-    await page.locator("button.vjs-subs-caps-button").click(timeout=10000)
-    await page.locator('.vjs-menu-item:has-text("English")').click(timeout=10000)
+    print("  - Handling Viebit player UI...")
+    try:
+        await page.locator(".vjs-big-play-button").scroll_into_view_if_needed()
+        await page.locator(".vjs-big-play-button").click(timeout=20000, force=True)
+
+        await page.locator(".vjs-play-control").scroll_into_view_if_needed()
+        await page.locator(".vjs-play-control").click(timeout=10000, force=True)
+
+        await page.wait_for_timeout(500)
+        await page.locator("button.vjs-subs-caps-button").scroll_into_view_if_needed()
+        await page.locator("button.vjs-subs-caps-button").click(timeout=10000, force=True)
+
+        await page.locator('.vjs-menu-item:has-text("English")').click(timeout=10000, force=True)
+    except Exception as e:
+        html = await page.content()
+        Path("debug_viebit.html").write_text(html)
+        raise RuntimeError(f"Viebit interaction failed: {e}")
 
 async def process_url(url: str, browser_channel="chrome"):
     transcript = None
     filename = None
+    print(f"\n▶️ Processing: {url}")
+
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True, channel=None)
+        browser = await p.chromium.launch(headless=True, channel=browser_channel)
         page = await browser.new_page()
         vtt_future = asyncio.Future()
 
         async def handle_response(response):
             if ".vtt" in response.url and not vtt_future.done():
+                print(f"  ✅ VTT URL found: {response.url}")
                 try:
                     vtt_future.set_result(await response.text())
                 except Exception as e:
@@ -60,6 +87,7 @@ async def process_url(url: str, browser_channel="chrome"):
 
         try:
             await page.goto(url, wait_until="load", timeout=45000)
+
             if "granicus.com" in url:
                 await handle_granicus_url(page)
             elif "viebit.com" in url:
@@ -67,14 +95,14 @@ async def process_url(url: str, browser_channel="chrome"):
             else:
                 return "Unsupported platform", None
 
-            vtt_content = await asyncio.wait_for(vtt_future, timeout=20)
+            vtt_content = await asyncio.wait_for(vtt_future, timeout=30)
             video_title = await page.title()
             sanitized_title = sanitize_filename(video_title)
             transcript = parse_vtt(vtt_content)
             filename = f"{sanitized_title}.txt"
 
         except asyncio.TimeoutError:
-            return "Timeout error", None
+            return "Timeout waiting for VTT file", None
         except Exception as e:
             return f"Error: {str(e)}", None
         finally:
@@ -82,11 +110,11 @@ async def process_url(url: str, browser_channel="chrome"):
 
     return transcript, filename
 
+# --- Streamlit UI ---
 
 st.set_page_config(page_title="City Video Transcript Tool", layout="wide")
 st.title("📼 City Video Transcript Extractor")
-
-st.markdown("Enter video URLs from Granicus or Viebit-supported platforms (one per line):")
+st.markdown("Enter video URLs from Granicus or Viebit (one per line):")
 
 url_input = st.text_area("Paste URLs here:", height=200, placeholder="https://...")
 
@@ -95,6 +123,7 @@ if st.button("Generate Transcripts"):
     if not urls:
         st.warning("Please enter at least one valid URL.")
     else:
+        st.info("Processing... Check logs on Render for progress.")
         results = []
 
         async def run_all():
