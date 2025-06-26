@@ -45,7 +45,7 @@ async def process_url(url: str, browser_channel="chrome"):
     transcript = None
     filename = None
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True, channel=browser_channel)
+        browser = await p.chromium.launch(headless=True, channel=None)
         page = await browser.new_page()
         vtt_future = asyncio.Future()
 
