@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: city-video-transcript-app
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: ./startup.sh
+    branch: main
+    runtime: python
+    region: oregon
+    plan: free
